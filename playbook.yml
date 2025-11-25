@@ -1,0 +1,131 @@
+- name: Generar reporte de inventario con todos los hosts
+  hosts: all
+  gather_facts: no
+
+  tasks:
+
+    - name: Realizar ping condicional
+      ansible.builtin.ping:
+      ignore_unreachable: yes
+      ignore_errors: yes
+      register: ping_result
+
+    - name: Intentar ping y recolección de facts para Windows
+      ansible.windows.win_ping:
+      ignore_unreachable: yes
+      ignore_errors: yes
+      register: win_ping_result
+
+    - name: Recolección de facts
+      ansible.builtin.setup:
+      ignore_unreachable: yes
+      ignore_errors: yes
+      register: host_facts
+
+    - debug:
+        msg: "{{host_facts}}"
+
+    - name: Establecer facts predeterminados para hosts que no se conectan
+      ansible.builtin.set_fact:
+        host_status:
+          conectado: "No"
+          ansible_facts_data: {}
+      when: (ping_result.failed is not defined or ping_result.failed) and (win_ping_result.failed is not defined or win_ping_result.failed)
+
+    - name: Establecer facts del host si la conexión fue exitosa
+      ansible.builtin.set_fact:
+        host_status:
+          conectado: "Sí"
+          ansible_facts_data: "{{ host_facts.ansible_facts | default({}) }}"
+      when: (ping_result.failed is defined and not ping_result.failed) or (win_ping_result.failed is defined and not win_ping_result.failed)
+
+    - debug:
+        msg: "{{host_status.ansible_facts_data}}"
+      delegate_to: localhost
+
+    - name: Find the 'key' value for 'AnsibleGroup'
+      set_fact:
+        ansible_group_key: "{{ hostvars[inventory_hostname]['availableField'] | selectattr('name', 'equalto', 'AnsibleGroup') | map(attribute='key') | first | default('N/A')}}"
+      when: hostvars[inventory_hostname]['availableField'] is defined
+
+    - name: Display the extracted key
+      debug:
+        msg: "The key for AnsibleGroup is: {{ ansible_group_key| default('N/A') }}"
+
+    - name: Find the 'value' using the extracted 'key'
+      set_fact:
+        ansible_group_value: "{{ hostvars[inventory_hostname]['value'] | selectattr('key', 'equalto', ansible_group_key| int) | map(attribute='value') | first | default('N/A') }}"
+      when: ansible_group_key is defined and hostvars[inventory_hostname]['value'] is defined and ansible_group_key != "N/A"
+
+    - name: Display the extracted value
+      debug:
+        msg: "The value for the key {{ ansible_group_key }} is: {{ ansible_group_value }}"
+      when: ansible_group_value is defined
+
+    - name: Construir datos del host para el reporte
+      ansible.builtin.set_fact:
+        host_info:
+          hostname: "{{ inventory_hostname }}"
+          conectado: "{{ host_status.conectado }}"
+          powerState: "{{ hostvars[inventory_hostname]['runtime.powerState'] | default('N/A')}}"
+          ipAddress: "{{ hostvars[inventory_hostname]['guest.ipAddress']| default('N/A')}}"  
+          ansible_distribution: "{{ host_status.ansible_facts_data['ansible_distribution'] | default('N/A') }}"
+          ansible_distribution_version: "{{ host_status.ansible_facts_data['ansible_distribution_version'] | default('N/A') }}"
+          num_cpu: "{{ hostvars[inventory_hostname]['config.hardware.numCPU'] | default('N/A')}}"
+          memory_mb: "{{ hostvars[inventory_hostname]['config.hardware.memoryMB'] | default('N/A')}}"
+          ansible_fqdn: "{{ host_status.ansible_facts_data['ansible_fqdn'] | default('N/A') }}"
+          hardware_version: "{{ hostvars[inventory_hostname]['config.version'] | default('N/A')}}"
+          guest_full_name: "{{ hostvars[inventory_hostname]['guest.guestFullName'] | default('N/A')}}"
+          tools_running_status: "{{ hostvars[inventory_hostname]['guest.toolsRunningStatus'] | default('N/A')}}"
+          connection_state: "{{ hostvars[inventory_hostname]['runtime.connectionState'] | default('N/A')}}"
+          boot_time: "{{ hostvars[inventory_hostname]['runtime.bootTime'] | default('N/A')}}"
+          cpu_hot_add_enabled: "{{ hostvars[inventory_hostname]['config.cpuHotAddEnabled'] | default('N/A')}}"
+          memory_hot_add_enabled: "{{ hostvars[inventory_hostname]['config.memoryHotAddEnabled'] | default('N/A')}}"
+          num_cores_per_socket: "{{ hostvars[inventory_hostname]['config.hardware.numCoresPerSocket'] | default('N/A')}}"
+          annotation: "{{ hostvars[inventory_hostname]['config.annotation'] | default('N/A')}}"
+          guest_family: "{{ hostvars[inventory_hostname]['config.guestFamily'] | default('N/A')}}"
+          consolidation_needed: "{{ hostvars[inventory_hostname]['runtime.consolidationNeeded'] | default('N/A')}}"
+          hw_version: "{{ hostvars[inventory_hostname]['summary.config.hwVersion'] | default('N/A')}}"
+          # ansible_host: "{{ host_status.ansible_facts_data['ansible_host'] | default('N/A')}}"
+          # gateway: "{{ host_status.ansible_facts_data['ansible_default_ipv4']['gateway'] | default('N/A')}}"
+          # os_family: "{{ host_status.ansible_facts_data['ansible_os_family'] | default('Desconocido') }}"
+          # ansible_kernel: "{{ host_status.ansible_facts_data['ansible_kernel'] | default('N/A')}}"
+          # ansible_selinux: "{{ host_status.ansible_facts_data['ansible_selinux']['mode'] | default('N/A')}}"
+          # ansible_machine_arch: "{{ host_status.ansible_facts_data['ansible_architecture'] | default('N/A') }}"
+          # ansible_processor_vcpus: "{{ host_status.ansible_facts_data['ansible_processor_vcpus'] | default('N/A') }}"
+          # ansible_memtotal_mb: "{{ host_status.ansible_facts_data['ansible_memtotal_mb'] | default('N/A') }}"
+          # toolsStatus: "{{ hostvars[inventory_hostname]['guest.toolsStatus'] | default('N/A') }}"
+
+    - name: Generar reporte CSV a partir de la plantilla
+      ansible.builtin.template:
+        src: reporte_hosts.j2
+        dest: "./reporte_inventario_{{ ansible_date_time.iso8601 }}.csv"
+      register: template
+      run_once: true
+      delegate_to: localhost
+
+    - name: Send the notification email
+      community.general.mail:
+        host: "{{ mail_host }}"        # Injected from the custom credential
+        port: "{{ mail_port |int }}"        # Injected from the custom credential
+        username: "{{ mail_username }}"  # Injected from the custom credential
+        password: "{{ mail_password }}"  # Injected from the custom credential
+        to: "{{ mail_to }}"
+        subject: "Reporte execution"
+        body: "The reporte automation job has successfully finished."
+        secure: starttls
+        attach:
+          - "./reporte_inventario_{{ ansible_date_time.iso8601 }}.csv"
+        secure: starttls
+      delegate_to: localhost
+      run_once: true
+
+    - name: Add virtual machine custom attributes
+      community.vmware.vmware_guest_custom_attributes:
+        uuid: "{{ hostvars[inventory_hostname]['config.uuid']}}"
+        state: present
+        attributes:
+          - name: PRUEBA
+            value: PRUEBA
+      delegate_to: localhost
+      when: hostvars[inventory_hostname]['config.uuid'] is defined
