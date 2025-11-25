@@ -42,7 +42,7 @@
     - name: Recoger información de paquetes instalados
       ansible.builtin.package_facts:
         manager: auto
-      when: conectado == "Sí"
+      when: host_status.conectado == "Sí"
 
     - debug:
         msg: "{{host_status.ansible_facts_data}}"
@@ -132,11 +132,11 @@
 
     - name: Send the notification email
       community.general.mail:
-        host: "{{ mail_host }}"        # Injected from the custom credential
-        port: "{{ mail_port |int }}"        # Injected from the custom credential
-        username: "{{ mail_username }}"  # Injected from the custom credential
-        password: "{{ mail_password }}"  # Injected from the custom credential
-        to: "{{ mail_to }}"
+        host: "{{ smtp_host }}"        # Injected from the custom credential
+        port: "{{ smtp_port |int }}"        # Injected from the custom credential
+        username: "{{ smtp_user }}"  # Injected from the custom credential
+        password: "{{ smtp_password }}"  # Injected from the custom credential
+        to: "{{ smtp_to }}"
         subject: "Reporte execution"
         body: "The reporte automation job has successfully finished."
         secure: starttls
@@ -154,4 +154,4 @@
           - name: PRUEBA
             value: PRUEBA
       delegate_to: localhost
-      when: hostvars[inventory_hostname]['config.uuid'] is defined
+      when: hostvars[inventory_hostname]['config.uuid'] is defined and add_atributes is defined

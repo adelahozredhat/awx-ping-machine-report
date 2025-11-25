@@ -1,0 +1,53 @@
+---
+- name: Instalación de stack de aplicaciones y gestión de servicios
+  hosts: all
+  become: yes # Necesario para instalar paquetes y gestionar servicios
+
+  vars:
+    # 📝 Lista de paquetes comunes para Debian/RedHat.
+    # El módulo 'package' de Ansible intentará resolver las dependencias.
+    # Nota: Para Tomcat, usamos el paquete común 'tomcat'. Puede que necesites
+    # especificar 'tomcat9' o similar en distribuciones modernas si 'tomcat' no existe.
+    common_packages:
+      - java-1.8.0-openjdk-devel # Java Development Kit (Ejemplo de RHEL/CentOS)
+      - httpd                     # Apache en RHEL/CentOS/Fedora (o apache2 en Debian/Ubuntu)
+      - tomcat                    # Servidor de aplicaciones Tomcat
+      - php                       # Lenguaje de scripting PHP
+    
+    # ⚙️ Nombres de los servicios en systemd para asegurar que estén arrancados.
+    # El servicio de Java no se arranca directamente, por eso se omite.
+    services_to_start:
+      - httpd  # O 'apache2' en Debian/Ubuntu
+      - tomcat # O 'tomcat9'
+
+  tasks:
+    # 1. Tarea de Instalación de Java, Apache, Tomcat y PHP
+    - name: Instalar todos los paquetes (Java, Apache, Tomcat, PHP)
+      # El módulo 'package' es un wrapper que usa el gestor de paquetes
+      # adecuado (apt, yum, dnf) según el sistema operativo.
+      ansible.builtin.package:
+        name: "{{ common_packages }}"
+        state: present
+        
+    # 2. Tarea de Ajuste del Nombre del Servicio Apache (Manejando Diferencias)
+    # Algunas distribuciones usan 'httpd', otras 'apache2'.
+    - name: Determinar el nombre correcto del servicio Apache/HTTPD
+      ansible.builtin.set_fact:
+        apache_service_name: >
+          {% if ansible_os_family == 'Debian' %}
+          apache2
+          {% else %}
+          httpd
+          {% endif %}
+
+    # 3. Tarea de Arranque y Habilitación de Servicios
+    - name: Asegurar que Apache y Tomcat estén arrancados y habilitados
+      ansible.builtin.service:
+        # Usamos una lista de servicios que incluya la variable dinámica de Apache
+        name: "{{ item }}"
+        state: started
+        enabled: yes # Habilita el servicio para que arranque al inicio
+      loop:
+        # Usamos la variable determinada en el paso anterior
+        - "{{ apache_service_name }}"
+        - tomcat # Usamos 'tomcat' por defecto. Ajustar si el paquete es 'tomcat9'.
