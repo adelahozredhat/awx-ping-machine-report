@@ -1,0 +1,27 @@
+- name: Buscar versión de PHP desde comando
+  shell: php -v 2>/dev/null | head -n 1 | awk '{print $2}'
+  register: php_version_output
+  failed_when: false
+  changed_when: false
+
+- name: Buscar versión de PHP desde paquete instalado
+  set_fact:
+    php_package_version: >-
+      {{ (ansible_facts.packages['php'][0].version) if ('php' in ansible_facts.packages) else '' }}
+
+- name: Definir versión de PHP consolidada
+  set_fact:
+    php_version: >-
+      {{ php_version_output.stdout if php_version_output.stdout | length > 0 else (php_package_version if php_package_version | length > 0 else 'NULL') }}
+
+- name: 🔍 Obtener el estado del servicio php-fpm (Genérico)
+  ansible.builtin.systemd_service:
+    name: php-fpm
+  register: php_fpm_status
+  ignore_errors: true
+
+- name: 🔍 Obtener el estado del servicio php7.4-fpm (Ejemplo de versión específica)
+  ansible.builtin.systemd_service:
+    name: php7.4-fpm
+  register: php_fpm_versioned_status
+  ignore_errors: true

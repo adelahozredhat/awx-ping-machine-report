@@ -1,0 +1,9 @@
+- name: Resolver IP real del host (DNS)
+  command: getent hosts {{ inventory_hostname }}
+  register: resolved_ip
+  changed_when: false
+  failed_when: false
+
+- name: Extraer IP de la salida o establecer ERROR
+  set_fact:
+    host_ip: "{{ resolved_ip.stdout.split()[0] if resolved_ip.stdout else 'ERROR' }}"

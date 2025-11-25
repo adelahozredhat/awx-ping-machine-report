@@ -1,0 +1,81 @@
+- name: Buscar catalina.sh en todo el sistema
+  find:
+    paths:
+      - /opt
+      - /usr/share
+      - /usr/local
+    patterns: "catalina.sh"
+    recurse: yes
+  register: tomcat_find
+  ignore_errors: yes
+
+- name: Detectar versión de Tomcat (version.sh o RELEASE-NOTES)
+  shell: |
+    dir=$(dirname "{{ item.path }}")
+    if [ -x "$dir/version.sh" ]; then
+      "$dir/version.sh" 2>/dev/null | grep -Eo 'Apache Tomcat/[0-9.]+' | head -n1
+    elif [ -f "$dir/RELEASE-NOTES" ]; then
+      grep -Eo 'Apache Tomcat/[0-9.]+' "$dir/RELEASE-NOTES" | head -n1
+    elif [ -f "$dir/RELEASE-NOTES.txt" ]; then
+      grep -Eo 'Apache Tomcat/[0-9.]+' "$dir/RELEASE-NOTES.txt" | head -n1
+    else
+      echo ""
+    fi
+  loop: "{{ tomcat_find.files | default([]) }}"
+  register: tomcat_versions
+  changed_when: false
+  ignore_errors: yes
+
+- name: Consolidar versión de Tomcat (paquete + detectadas)
+  set_fact:
+    tomcat_detected: >-
+      {{
+        (
+          ([ansible_facts.packages['tomcat'][0].version] if 'tomcat' in ansible_facts.packages else [])
+          + (tomcat_versions.results | map(attribute='stdout') | select('match', 'Apache Tomcat/[0-9.]+') | list)
+        ) | unique
+      }}
+
+- name: Definir versión consolidada de Tomcat
+  set_fact:
+    tomcat_version: "{{ tomcat_detected | join(';') if tomcat_detected | length > 0 else 'NULL' }}"
+
+- name: Buscar carpetas webapps (rutas encontradas por find)
+  find:
+    paths:
+      - /opt
+      - /usr/share
+      - /usr/local
+    patterns: "webapps"
+    recurse: yes
+    file_type: directory
+  register: webapps_dirs
+  ignore_errors: yes
+
+- name: Listar apps dentro de cada carpeta webapps (solo nivel 1)
+  shell: |
+    if [ -d "{{ item.path }}" ]; then
+      find "{{ item.path }}" -maxdepth 1 -mindepth 1 -type d -o -type f -name "*.war" \
+      | xargs -n1 basename | sed 's/\.war$//' | tr '\n' ';'
+    fi
+  loop: "{{ webapps_dirs.files | default([]) }}"
+  register: webapps_found
+  ignore_errors: yes
+
+- name: Consolidar lista de aplicaciones Tomcat limpias
+  set_fact:
+    tomcat_apps: >-
+      {{
+        webapps_found.results
+          | map(attribute='stdout')
+          | select('match', '.')
+          | join(';')
+          | regex_replace(';+$', '')
+          | default('NULL')
+      }}
+
+- name: 🔍 Obtener el estado del servicio tomcat (Tomcat)
+  ansible.builtin.systemd_service:
+    name: tomcat
+  register: tomcat_status
+  ignore_errors: true

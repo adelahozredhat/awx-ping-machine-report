@@ -1,0 +1,46 @@
+- name: Intentar obtener versión de Apache desde ansible_facts
+  set_fact:
+    apache_version_facts: >-
+      {% if 'httpd' in ansible_facts.packages %}
+        {{ ansible_facts.packages['httpd'][0].version }}
+      {% else %}
+        NULL
+      {% endif %}
+
+- name: Intentar obtener versión de Apache con apachectl si facts falla
+  shell: apachectl -v | grep "Server version" | awk '{print $3}' | cut -d'/' -f2
+  register: apache_version_cmd
+  when: apache_version_facts == 'NULL'
+  failed_when: false
+  changed_when: false
+
+- name: Definir versión consolidada de Apache
+  set_fact:
+    apache_version: "{{ apache_version_facts if apache_version_facts != 'NULL' else (apache_version_cmd.stdout | default('NULL')) }}"
+
+- name: Definir comando apachectl según la distro
+  set_fact:
+    apachectl_cmd: "{{ 'httpd -S' if ansible_distribution in ['RedHat','CentOS','Rocky','AlmaLinux'] else 'apache2ctl -S' }}"
+
+- name: Obtener VirtualHosts
+  shell: "{{ apachectl_cmd }} 2>/dev/null | awk '/namevhost/ {print $4}'"
+  register: apache_vhosts
+  failed_when: false
+  changed_when: false
+
+- name: Consolidar VirtualHosts en un string
+  set_fact:
+    vhosts: "{{ apache_vhosts.stdout_lines | join(';') if apache_vhosts.stdout_lines | length > 0 else 'ERROR' }}"
+
+- name: 🔍 Obtener el estado del servicio httpd (Apache en RHEL/CentOS)
+  ansible.builtin.systemd_service:
+    name: httpd
+  register: httpd_status
+  ignore_errors: true # Para continuar si el servicio no existe
+
+- name: 🔍 Obtener el estado del servicio apache2 (Apache en Debian/Ubuntu)
+  ansible.builtin.systemd_service:
+    name: apache2
+  register: apache2_status
+  ignore_errors: true
+    

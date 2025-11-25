@@ -39,6 +39,11 @@
           ansible_facts_data: "{{ host_facts.ansible_facts | default({}) }}"
       when: (ping_result.failed is defined and not ping_result.failed) or (win_ping_result.failed is defined and not win_ping_result.failed)
 
+    - name: Recoger información de paquetes instalados
+      ansible.builtin.package_facts:
+        manager: auto
+      when: conectado == "Sí"
+
     - debug:
         msg: "{{host_status.ansible_facts_data}}"
       delegate_to: localhost
@@ -61,6 +66,26 @@
       debug:
         msg: "The value for the key {{ ansible_group_key }} is: {{ ansible_group_value }}"
       when: ansible_group_value is defined
+    
+    - name: Send notifications
+      ansible.builtin.import_role:
+        name: check_apache
+    
+    - name: Send notifications
+      ansible.builtin.import_role:
+        name: check_php
+    
+    - name: Send notifications
+      ansible.builtin.import_role:
+        name: check_tomcat
+    
+    - name: Send notifications
+      ansible.builtin.import_role:
+        name: check_java
+    
+    - name: Send notifications
+      ansible.builtin.import_role:
+        name: check_ip
 
     - name: Construir datos del host para el reporte
       ansible.builtin.set_fact:
@@ -86,6 +111,7 @@
           guest_family: "{{ hostvars[inventory_hostname]['config.guestFamily'] | default('N/A')}}"
           consolidation_needed: "{{ hostvars[inventory_hostname]['runtime.consolidationNeeded'] | default('N/A')}}"
           hw_version: "{{ hostvars[inventory_hostname]['summary.config.hwVersion'] | default('N/A')}}"
+
           # ansible_host: "{{ host_status.ansible_facts_data['ansible_host'] | default('N/A')}}"
           # gateway: "{{ host_status.ansible_facts_data['ansible_default_ipv4']['gateway'] | default('N/A')}}"
           # os_family: "{{ host_status.ansible_facts_data['ansible_os_family'] | default('Desconocido') }}"

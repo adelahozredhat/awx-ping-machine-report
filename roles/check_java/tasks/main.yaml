@@ -1,0 +1,9 @@
+- name: Ejecutar java -version y capturar versión
+  shell: java -version 2>&1 | head -n 1
+  register: java_version_output
+  failed_when: false
+  changed_when: false
+
+- name: Procesar salida de java -version y extraer versión
+  set_fact:
+    java_version: "{{ (java_version_output.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+')) | default('NULL') }}"
