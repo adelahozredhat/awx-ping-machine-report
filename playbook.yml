@@ -111,6 +111,11 @@
           guest_family: "{{ hostvars[inventory_hostname]['config.guestFamily'] | default('N/A')}}"
           consolidation_needed: "{{ hostvars[inventory_hostname]['runtime.consolidationNeeded'] | default('N/A')}}"
           hw_version: "{{ hostvars[inventory_hostname]['summary.config.hwVersion'] | default('N/A')}}"
+          servicio: "{{ hostvars[inventory_hostname]['servicio'] | default('N/A')}}"
+          departamento: "{{ hostvars[inventory_hostname]['departamento'] | default('N/A')}}"
+          responsable: "{{ hostvars[inventory_hostname]['responsable'] | default('N/A')}}"
+          location: "{{ hostvars[inventory_hostname]['location'] | default('N/A')}}"
+          cluster: "{{ hostvars[inventory_hostname]['cluster'] | default('N/A')}}"
 
           # ansible_host: "{{ host_status.ansible_facts_data['ansible_host'] | default('N/A')}}"
           # gateway: "{{ host_status.ansible_facts_data['ansible_default_ipv4']['gateway'] | default('N/A')}}"
